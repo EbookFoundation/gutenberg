@@ -12,7 +12,8 @@ var persist_options = {
   replace: true,
   debug: true
 };
-
+var globalBookShelfUrl = null;
+var globalBookShelfBooks = null;
 function queryParams(key) {
   var qd = {};
   if (location.search)
@@ -372,7 +373,10 @@ function showBooks() {
   console.log('after populateFilters');
 }
 
-function showBookshelf(bookshelfURL) {
+function showBookshelf(bookshelfURL,author) {
+  if(author===undefined){
+    author = "";
+  }
   console.log('showBookshelf');
   /* Show spinner if loading takes more than 1 second */
   inBooksLoadingLoop = true;
@@ -381,7 +385,7 @@ function showBookshelf(bookshelfURL) {
       $('#spinner').show();
     }
   }, 1000);
-
+  globalBookShelfUrl = bookshelfURL;
   populateFilters(function() {
     console.log('populateFilters callback');
 
@@ -394,14 +398,24 @@ function showBookshelf(bookshelfURL) {
     // }
 
     console.log('before loadScript');
-    const scriptURL = `bookshelf_${bookshelfURL}_${booksUrl}`;
+    console.log('---------'+booksUrl+"------");
+    const scriptURL = `bookshelf_${bookshelfURL}_lang_en_by_popularity.js`;
     // const scriptURL = "bookshelf_Adventure_lang_en_by_popularity.js"
     console.log("loading bookshelf:", scriptURL);
     loadScript(scriptURL, 'books_script', function() {
       if ($('#books_table').attr('filled')) {
         booksTable.fnDestroy();
       }
-
+      globalBookShelfBooks = json_data;
+      json_data = [];
+      
+      let authorPattern = new RegExp(author, 'i');
+      for(let i = 0; i<globalBookShelfBooks.length; ++i){
+        if(globalBookShelfBooks[i][1].match(authorPattern)){
+          json_data.push(globalBookShelfBooks[i]);
+        }
+      }
+      console.log(json_data);
       $(document).ready(function() {
         booksTable = $('#books_table').dataTable({
           initComplete: function(settings, json) {
@@ -663,26 +677,47 @@ function init() {
     source: function(request, response) {
       var results = [];
       var pattern = new RegExp(request.term, 'i');
-      var count = authors_json_data.length;
-      var i = 0;
-      while (i < count && results.length < 100) {
-        if (authors_json_data[i][0].match(pattern)) {
-          results.push(authors_json_data[i][0]);
+      if(globalBookShelfUrl==null){
+        var count = authors_json_data.length;
+        var i = 0;
+        while (i < count && results.length < 100) {
+          if (authors_json_data[i][0].match(pattern)) {
+            results.push(authors_json_data[i][0]);
+          }
+          i++;
         }
-        i++;
+      }else{
+        var count = globalBookShelfBooks.length;
+        var i = 0;
+        while (i < count && results.length < 100) {
+          if (globalBookShelfBooks[i][1].match(pattern)) {
+            results.push(globalBookShelfBooks[i][1]);
+          }
+          i++;
+        }
       }
       response(results);
     },
     select: function(event, ui) {
       minimizeUI();
       $.persistValue('author_filter', ui.item.value, persist_options);
-      showBooks();
+      if(globalBookShelfUrl == null){
+        showBooks();
+      }else{
+        showBookshelf(globalBookShelfUrl,ui.item.value);
+      }
+      
     }
 	});
   $('#author_filter').keypress(function(event) {
     if (event.which == 13) {
-      $.persistValue('author_filter', $(this).val(), persist_options);
-      showBooks();
+      
+      if(globalBookShelfUrl==null){
+        $.persistValue('author_filter', $(this).val(), persist_options);
+        showBooks();
+      }else{
+        showBookshelf(globalBookShelfUrl,$(this).val());
+      }
     }
   });
   
@@ -693,15 +728,28 @@ function init() {
       loadScript(booksUrl, 'find_books', function() {
         var results = [];
         var pattern = new RegExp(request.term, 'i');
-        var count = json_data.length;
-        var i = 0;
-        title_dict = {}
-        while (i < count && results.length < 100) {
-          if (json_data[i][0].match(pattern)) {
-            results.push(json_data[i][0]);
-            title_dict[json_data[i][0]] = json_data[i][3];
+        if(globalBookShelfUrl==null){
+          var count = json_data.length;
+          var i = 0;
+          title_dict = {}
+          while (i < count && results.length < 100) {
+            if (json_data[i][0].match(pattern)) {
+              results.push(json_data[i][0]);
+              title_dict[json_data[i][0]] = json_data[i][3];
+            }
+            i++;
           }
-          i++;
+        }else{
+          var count = globalBookShelfBooks.length;
+          var i = 0;
+          title_dict = {}
+          while (i < count && results.length < 100) {
+            if (globalBookShelfBooks[i][0].match(pattern)) {
+              results.push(globalBookShelfBooks[i][0]);
+              title_dict[globalBookShelfBooks[i][0]] = globalBookShelfBooks[i][3];
+            }
+            i++;
+          }
         }
       response(results);
       })
@@ -718,8 +766,13 @@ function init() {
   
   $('#author_filter').keypress(function(event) {
     if (event.which == 13) {
-      $.persistValue('author_filter', $(this).val(), persist_options);
-      showBooks();
+     
+      if(globalBookShelfUrl==null){
+        $.persistValue('author_filter', $(this).val(), persist_options);
+        showBooks();
+      }else{
+        showBookshelf(globalBookShelfUrl,$(this).val());
+      }
     }
   });
   $('#bookshelf_filter').keypress(function(event) {
